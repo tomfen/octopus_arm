@@ -1,0 +1,1 @@
+java -jar ./octopus-environment.jar external_gui tests/test_0.061.xml 7777
