@@ -15,43 +15,40 @@ class Agent:
         self.__stateDim = stateDim
         self.__actionDim = actionDim
         self.__action = np.random.random(actionDim)
+        self.__step = 0
+
+        self.__alpha = 0.001
         self.__gamma = 0.9
         self.__decision_every = 3
-        self.__step = 1
+        self.__explore_probability = 0.05
 
         self.__features = Features()
         self.__previous_action = None
         self.__previous_out = None
         self.__previous_meta_state = None
         self.__previous_state = None
-        self.__best_distance = None
+
+        self.__exploit = (agentParams == 'exploit')
+
+        self.__segments = 4
+        self.__actions = 4**self.__segments
 
         try:
             self.__net = load_model('net')
         except:
             print('Creating new model')
             self.__net = Sequential([
-                Dense(64, batch_size=1, input_dim=self.__features.dim),
-                Activation('tanh'),
-                Dense(16)
+                Dense(10, batch_size=1, input_dim=self.__features.dim),
+                Activation('relu'),
+                Dense(self.__actions)
             ])
 
-        self.__net.compile(optimizer=SGD(lr=0.01), loss='mean_squared_error')
+        self.__net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error')
 
     def start(self, state):
-        self.__best_distance = 999999
-
-        meta_state = np.asarray(self.__features.getFeatures(state), dtype='float').reshape((1, self.__features.dim))
-        out = self.__net.predict_proba([meta_state], batch_size=1)[0]
-
-        best_meta_action = np.argmax(out)
-
-        self.__previous_action = best_meta_action
-        self.__previous_meta_state = meta_state
         self.__previous_state = state
-        self.__previous_out = out
 
-        self.__meta_to_action(best_meta_action)
+        self.__choose_action(state)
 
         return self.__action
 
@@ -63,25 +60,10 @@ class Agent:
             return self.__action
         self.__step = 0
 
-        if self.__features.distMin(state) < self.__best_distance:
-            reward += 9
-            self.__best_distance = self.__features.distMin(state)
+        if not self.__exploit:
+            self.__update_q(reward - self.__features.distMin(state))
 
-        teach_out = self.__previous_out
-        teach_out[self.__previous_action] = reward + self.__gamma * teach_out[self.__previous_action]
-
-        self.__net.fit([self.__previous_meta_state], [teach_out.reshape(1, 16)], verbose=0)
-
-        meta_state = np.asarray(self.__features.getFeatures(state), dtype='float').reshape((1, self.__features.dim))
-        out = self.__net.predict_proba([meta_state], batch_size=1)[0]
-
-        best_meta_action = np.argmax(out)
-
-        self.__previous_action = best_meta_action
-        self.__previous_meta_state = meta_state
-        self.__previous_out = out
-
-        self.__meta_to_action(best_meta_action)
+        self.__choose_action(state)
 
         if reward == 10:
             self.__save_net()
@@ -89,7 +71,8 @@ class Agent:
         return self.__action
 
     def end(self, reward):
-        pass
+        self.__update_q(reward)
+        self.__save_net()
 
     def cleanup(self):
         pass
@@ -97,25 +80,54 @@ class Agent:
     def getName(self):
         return self.__name
 
+    def __choose_action(self, state):
+        meta_state = np.asarray(self.__features.getFeatures(state), dtype='float').reshape((1, self.__features.dim))
+        out = self.__net.predict_proba([meta_state], batch_size=1)[0]
+
+        self.__previous_out = out
+
+        if not self.__exploit and self.__explore_probability < np.random.random():
+            # take best action
+            action = np.argmax(out)
+        else:
+            # take random action
+            action = np.random.randint(0, self.__actions)
+
+        self.__previous_action = action
+        self.__previous_meta_state = meta_state
+
+        self.__meta_to_action(action)
+
+    def __update_q(self, reward):
+        teach_out = self.__previous_out
+        teach_out[self.__previous_action] = reward + self.__gamma * teach_out[self.__previous_action]
+
+        self.__net.fit([self.__previous_meta_state], [teach_out.reshape(1, self.__actions)], verbose=0)
+
     def __meta_to_action(self, meta):
         upper = meta % 4
-        lower = meta // 4
+        middle = (meta // 4) % 4
+        lower = meta // 8
 
         self.__action[:] = 0
 
-        if upper == 1:
-            self.__action[0:15:3] = 1
-        elif upper == 2:
-            self.__action[1:15:3] = 1
-        elif upper == 3:
-            self.__action[2:15:3] = 1
+        for segment in range(self.__segments):
+            segment_action = meta % 4
 
-        if lower == 1:
-            self.__action[15:30:3] = 1
-        elif lower == 2:
-            self.__action[16:30:3] = 1
-        elif lower == 3:
-            self.__action[17:30:3] = 1
+            muscle_start = 30 * segment // self.__segments
+            muscle_stop = 30 * (segment+1) // self.__segments
+
+            if segment_action == 1:
+                self.__action[muscle_start:muscle_stop:3] = 1
+
+            if segment_action == 2:
+                self.__action[muscle_start+1:muscle_stop:3] = 1
+
+            if segment_action == 3:
+                self.__action[muscle_start+2:muscle_stop:3] = 1
+
+            meta //= 4
+
 
     def __save_net(self):
         self.__net.save('net')

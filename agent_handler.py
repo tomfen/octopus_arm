@@ -20,12 +20,12 @@ class Handler:
             sys.exit(1)
 
     def connect(self, host, port):
-        try:
-            self.sock.connect((host, port))
-        except socket.error:
-            print('Unable to contact environment at the given host/port.')
-            sys.exit(1)
-
+        while True:
+            try:
+                self.sock.connect((host, port))
+                return
+            except socket.error:
+                pass
 
     def sendStr(self, s):
         self.sock.send(s.encode() + LINE_SEPARATOR)
@@ -85,4 +85,7 @@ class Handler:
                 terminalFlag = int(data[1])
                 state = [float(x) for x in data[3:]] #map(float, data[3:])
 
-                action = agent.step(reward, state)
+                if terminalFlag == 0:
+                    action = agent.step(reward, state)
+                else:
+                    agent.end(reward)
