@@ -19,7 +19,7 @@ class Agent:
 
         self.__alpha = 0.001
         self.__gamma = 0.9
-        self.__decision_every = 3
+        self.__decision_every = 5
         self.__explore_probability = 0.05
 
         self.__features = Features()
@@ -31,7 +31,7 @@ class Agent:
         self.__exploit = (agentParams == 'exploit')
 
         self.__segments = 4
-        self.__actions = 4**self.__segments
+        self.__actions = 3**self.__segments
 
         try:
             self.__net = load_model('net')
@@ -56,7 +56,7 @@ class Agent:
         self.__previous_state = state
 
         self.__step += 1
-        if (self.__step != self.__decision_every) and reward != 10:
+        if self.__step != self.__decision_every:
             return self.__action
         self.__step = 0
 
@@ -64,9 +64,6 @@ class Agent:
             self.__update_q(reward - self.__features.distMin(state))
 
         self.__choose_action(state)
-
-        if reward == 10:
-            self.__save_net()
 
         return self.__action
 
@@ -105,28 +102,25 @@ class Agent:
         self.__net.fit([self.__previous_meta_state], [teach_out.reshape(1, self.__actions)], verbose=0)
 
     def __meta_to_action(self, meta):
-        upper = meta % 4
-        middle = (meta // 4) % 4
-        lower = meta // 8
 
         self.__action[:] = 0
 
         for segment in range(self.__segments):
-            segment_action = meta % 4
+            segment_action = meta % 3
 
             muscle_start = 30 * segment // self.__segments
             muscle_stop = 30 * (segment+1) // self.__segments
 
-            if segment_action == 1:
+            if segment_action == 0:
                 self.__action[muscle_start:muscle_stop:3] = 1
 
-            if segment_action == 2:
+            if segment_action == 1:
                 self.__action[muscle_start+1:muscle_stop:3] = 1
 
-            if segment_action == 3:
+            if segment_action == 2:
                 self.__action[muscle_start+2:muscle_stop:3] = 1
 
-            meta //= 4
+            meta //= 3
 
 
     def __save_net(self):

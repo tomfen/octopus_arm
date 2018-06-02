@@ -6,7 +6,7 @@ class Features:
     def __init__(self):
         self.__food = [9, -1]
         self.__foodLength = self.distanceBetweenPoints(0, 0, self.__food[0], self.__food[1])
-        self.dim = 22
+        self.dim = 82
         pass
 
     def distanceBetweenPoints(self, x1, y1, x2, y2):
@@ -15,6 +15,7 @@ class Features:
         return d
 
     def getFeatures(self, state):
+        return state
         e= [state[0], state[1]] + [state[i]+state[i+40] for i in range(2, 42, 2)]
 
         for i in range(1,5):
@@ -22,15 +23,8 @@ class Features:
         return e
 
         features = []
-        # features.append(self.dist(state)) 		#Im mniej tym lepiej
-        # features.append(self.distmid(state))	#Im mniej tym lepiej
-        # features.append(self.totalLength(state))#Im wiecej tym lepiej
-        # features.append(self.angleDelta(state)) #Im mniej tym lepiej
-        # features.append(self.angleVar(state))	#Im mniej tym lepiej
-
 
         features.append(self.distMin(state))  # Im wiecej tym lepiej
-        # distSquared(self, state):
         features.append(self.distSquared(state))
         features.append(self.distmid(state))		#Im wiecej tym lepiej
         features.append(self.halfLength(state, 0))  # Im wiecej tym lepiej
