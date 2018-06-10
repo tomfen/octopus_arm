@@ -24,6 +24,7 @@ class Agent:
 
         self.__features = Features()
         self.__previous_action = None
+        self.__current_out = None
         self.__previous_out = None
         self.__previous_meta_state = None
         self.__previous_state = None
@@ -50,6 +51,8 @@ class Agent:
 
         self.__choose_action(state)
 
+        self.__previous_out = self.__current_out
+
         return self.__action
 
     def step(self, reward, state):
@@ -60,15 +63,18 @@ class Agent:
             return self.__action
         self.__step = 0
 
-        if not self.__exploit:
-            self.__update_q(reward - self.__features.distMin(state))
-
         self.__choose_action(state)
+
+        if not self.__exploit:
+            max_q = self.__current_out[np.argmax(self.__current_out)]
+            self.__update_q(reward - self.__features.distMin(state)/100, max_q)
+
+        self.__previous_out = self.__current_out
 
         return self.__action
 
     def end(self, reward):
-        self.__update_q(reward)
+        self.__update_q(reward, reward)
         self.__save_net()
 
     def cleanup(self):
@@ -81,7 +87,7 @@ class Agent:
         meta_state = np.asarray(self.__features.getFeatures(state), dtype='float').reshape((1, self.__features.dim))
         out = self.__net.predict_proba([meta_state], batch_size=1)[0]
 
-        self.__previous_out = out
+        self.__current_out = out
 
         if not self.__exploit and self.__explore_probability < np.random.random():
             # take best action
@@ -95,9 +101,9 @@ class Agent:
 
         self.__meta_to_action(action)
 
-    def __update_q(self, reward):
+    def __update_q(self, reward, max_q):
         teach_out = self.__previous_out
-        teach_out[self.__previous_action] = reward + self.__gamma * teach_out[self.__previous_action]
+        teach_out[self.__previous_action] = reward + self.__gamma * max_q
 
         self.__net.fit([self.__previous_meta_state], [teach_out.reshape(1, self.__actions)], verbose=0)
 

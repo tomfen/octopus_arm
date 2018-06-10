@@ -22,17 +22,16 @@ tests = glob.glob(os.path.join('tests', '*.xml'))
 tests = sorted(tests, key=lambda s: s[-7:-5])
 
 for test in tests:
-    print(test, end=': ')
     server_command = 'javaw -jar ./octopus-environment.jar external_gui %s 7777' % test
     with Popen(server_command) as proc:
-        Handler().run(['localhost', '7777', '1'])
+        Handler().run(['localhost', '7777', '1', ''])
         proc.kill()
 
         log_file = glob.glob('*.log')[0]
         score = calculate_score(log_file)
 
         scores.append(score)
-        print(score)
+        print('%s:\t%.2f' % (test, score))
 
         time.sleep(0.1)  # HACK
         os.remove(log_file)

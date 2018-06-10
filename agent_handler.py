@@ -2,6 +2,9 @@
 import socket
 import sys
 import random
+
+import time
+
 import Agent
 
 LINE_SEPARATOR = b'\n'
@@ -25,7 +28,7 @@ class Handler:
                 self.sock.connect((host, port))
                 return
             except socket.error:
-                pass
+                time.sleep(0.2)
 
     def sendStr(self, s):
         self.sock.send(s.encode() + LINE_SEPARATOR)
