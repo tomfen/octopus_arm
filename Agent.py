@@ -3,7 +3,9 @@ from keras import Sequential
 from keras.layers import Dense, Activation
 from keras.models import load_model
 from keras.optimizers import SGD
+import _pickle as pickle
 
+from Replay import Replay
 from features import Features
 
 
@@ -29,7 +31,8 @@ class Agent:
         self.__previous_meta_state = None
         self.__previous_state = None
 
-        self.__exploit = (agentParams == 'exploit')
+        self.__test = agentParams[0]
+        self.__exploit = False
 
         self.__segments = 4
         self.__actions = 3**self.__segments
@@ -39,12 +42,22 @@ class Agent:
         except:
             print('Creating new model')
             self.__net = Sequential([
-                Dense(10, batch_size=1, input_dim=self.__features.dim),
-                Activation('relu'),
+                Dense(50, batch_size=1, input_dim=self.__features.dim),
+                Activation('elu'),
+                Dense(30),
+                Activation('elu'),
                 Dense(self.__actions)
             ])
 
         self.__net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error')
+
+        try:
+            with open('replay', 'r') as file:
+                self.__replay = pickle.load(file)
+        except:
+            self.__replay = Replay()
+        self.__replay_X = []
+        self.__replay_Y = []
 
     def start(self, state):
         self.__previous_state = state
@@ -59,9 +72,8 @@ class Agent:
         self.__previous_state = state
 
         self.__step += 1
-        if self.__step != self.__decision_every:
+        if self.__step % self.__decision_every != 0:
             return self.__action
-        self.__step = 0
 
         self.__choose_action(state)
 
@@ -75,7 +87,10 @@ class Agent:
 
     def end(self, reward):
         self.__update_q(reward, reward)
-        self.__save_net()
+        self.__replay.submit(self.__test, (self.__replay_X, self.__replay_Y), self.__step)
+        self.__net.save('net')
+        with open('replay', 'w') as file:
+            pickle.dump(self.__replay, file)
 
     def cleanup(self):
         pass
@@ -105,6 +120,10 @@ class Agent:
         teach_out = self.__previous_out
         teach_out[self.__previous_action] = reward + self.__gamma * max_q
 
+        if np.random.random() < 0.001:
+            self.__replay_X.append(self.__previous_meta_state)
+            self.__replay_Y.append(teach_out)
+
         self.__net.fit([self.__previous_meta_state], [teach_out.reshape(1, self.__actions)], verbose=0)
 
     def __meta_to_action(self, meta):
@@ -127,7 +146,3 @@ class Agent:
                 self.__action[muscle_start+2:muscle_stop:3] = 1
 
             meta //= 3
-
-
-    def __save_net(self):
-        self.__net.save('net')

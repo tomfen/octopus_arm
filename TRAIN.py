@@ -24,7 +24,7 @@ tests = sorted(tests, key=lambda s: s[-7:-5])
 for test in tests:
     server_command = 'javaw -jar ./octopus-environment.jar external_gui %s 7777' % test
     with Popen(server_command) as proc:
-        Handler().run(['localhost', '7777', '1', ''])
+        Handler().run(['localhost', '7777', '1', test])
         proc.kill()
 
         log_file = glob.glob('*.log')[0]

@@ -17,7 +17,7 @@ class Handler:
 
     def getArgs(self, args):
         try:
-            return args[0], int(args[1]), int(args[2]), 'sample_agents/weights.txt'
+            return args[0], int(args[1]), int(args[2]), args[3:]
         except ValueError:
             print('usage: python agent_handler <server> <port> <num-episodes> [<agent-specific parameters>]')
             sys.exit(1)
