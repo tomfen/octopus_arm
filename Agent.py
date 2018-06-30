@@ -2,12 +2,10 @@ import numpy as np
 from keras import Sequential
 from keras.layers import Dense, Activation
 from keras.models import load_model
-from keras.optimizers import SGD
-import _pickle as pickle
 
-from Replay import Replay
 from features import Features
 
+np.set_printoptions(precision=3, suppress=True)
 
 class Agent:
     # name should contain only letters, digits, and underscores (not enforced by environment)
@@ -22,7 +20,6 @@ class Agent:
         self.__alpha = 0.001
         self.__gamma = 0.9
         self.__decision_every = 5
-        self.__explore_probability = 0.05
 
         self.__features = Features()
         self.__previous_action = None
@@ -42,29 +39,14 @@ class Agent:
         except:
             print('Creating new model')
             self.__net = Sequential([
-                Dense(50, batch_size=1, input_dim=self.__features.dim),
-                Activation('elu'),
-                Dense(30),
-                Activation('elu'),
                 Dense(self.__actions)
             ])
 
         self.__net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error')
-
-        try:
-            with open('replay', 'r') as file:
-                self.__replay = pickle.load(file)
-        except:
-            self.__replay = Replay()
-        self.__replay_X = []
-        self.__replay_Y = []
-
     def start(self, state):
         self.__previous_state = state
 
         self.__choose_action(state)
-
-        self.__previous_out = self.__current_out
 
         return self.__action
 
@@ -87,10 +69,7 @@ class Agent:
 
     def end(self, reward):
         self.__update_q(reward, reward)
-        self.__replay.submit(self.__test, (self.__replay_X, self.__replay_Y), self.__step)
         self.__net.save('net')
-        with open('replay', 'w') as file:
-            pickle.dump(self.__replay, file)
 
     def cleanup(self):
         pass

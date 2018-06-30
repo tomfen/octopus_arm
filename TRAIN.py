@@ -1,6 +1,7 @@
 import glob
 import os
-from subprocess import Popen
+from pathlib import Path
+from subprocess import Popen, PIPE
 
 import time
 
@@ -21,10 +22,28 @@ scores = []
 tests = glob.glob(os.path.join('tests', '*.xml'))
 tests = sorted(tests, key=lambda s: s[-7:-5])
 
+current_dir = str(Path().absolute())
+
+first_placeholder = ""
+
+import platform
+if platform.system() is not "Windows":
+    first_placeholder = "exec"
+
+GUI = True
+gui_placeholder = "external"
+
+if GUI:
+    gui_placeholder = "external_gui"
+
 for test in tests:
-    server_command = 'javaw -jar ./octopus-environment.jar external_gui %s 7777' % test
-    with Popen(server_command) as proc:
-        Handler().run(['localhost', '7777', '1', test])
+    print(test, end=': ')
+    server_command = '{} java  -Djava.endorsed.dirs={}/environment/lib -jar {}/environment/octopus-environment.jar {} {} 7777'.format(first_placeholder, current_dir, current_dir, gui_placeholder, (os.path.join(current_dir, test)))
+    with Popen(server_command, shell=True, stdout=PIPE) as proc:
+
+        # for line in proc.stdout:
+        #     print(line)
+        Handler().run(['localhost', '7777', '1'])
         proc.kill()
 
         log_file = glob.glob('*.log')[0]

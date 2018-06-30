@@ -46,7 +46,8 @@ class Handler:
     def sendAction(self, action):
         # sends all the components of the action one by one
         for a in action:
-            self.sendStr(str(a).replace('.', ',', 1))
+            self.sendStr(str(a))
+            #self.sendStr(str(a).replace('.', ',', 1)) #locale dependent
 
     def run(self, args):
 
