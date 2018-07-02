@@ -3,3 +3,5 @@
 !TRAIN.py
 !features.py
 !.gitignore
+!replay.py
+!tests_some/
