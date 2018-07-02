@@ -3,24 +3,15 @@ import math
 
 class Features:
     def __init__(self):
-        self.__food = [9, -1]
-        self.__foodLength = self.distanceBetweenPoints(0, 0, self.__food[0], self.__food[1])
         self.dim = 42
         self.__goal = (9, -1)
-        pass
 
-    def distanceBetweenPoints(self, x1, y1, x2, y2):
-        d = (x1 - x2) ** 2 + (y1 - y2) ** 2
-        d = d ** (0.5)
-        return d
+    @staticmethod
+    def distance(x1, y1, x2, y2):
+        return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
-    def getFeatures(self, state):
-        e= [state[0], state[1]] + [state[i]+state[i+40] for i in range(2, 42, 2)]
-
-        for i in range(1,5):
-            e[2+4*i] -= 2*i
-
-        S = list(state[:2])
+    def get_features(self, state):
+        features = list(state[:2])
 
         for i in range(2, 42, 2):
             x1 = state[i]
@@ -45,6 +36,10 @@ class Features:
             x_ = x * cos - y * sin
             y_ = y * cos + x * sin
 
-            S.append(x_/9)
-            S.append(y_/9)
-        return S
+            features.append(x_/9)
+            features.append(y_/9)
+        return features
+
+    def min_dist(self, state):
+        xg, yg = self.__goal
+        return min(self.distance(state[42 + i*4], state[42 + i*4 + 1], xg, yg) for i in range(7, 10))

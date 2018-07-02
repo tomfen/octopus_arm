@@ -4,3 +4,5 @@
 !features.py
 !.gitignore
 !octopus-environment.jar
+!replay.py
+!tests_some/

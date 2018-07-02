@@ -19,8 +19,8 @@ for log_file in glob.iglob('*.log'):
 
 scores = []
 
-tests = glob.glob(os.path.join('tests', '*.xml'))
-tests = sorted(tests, key=lambda s: s[-7:-5])
+tests = glob.glob(os.path.join('tests_some', '*.xml'))
+tests = sorted(tests, key=lambda s: s[-7:-4])
 
 current_dir = str(Path().absolute())
 
@@ -43,7 +43,7 @@ for test in tests:
 
         # for line in proc.stdout:
         #     print(line)
-        Handler().run(['localhost', '7777', '1'])
+        Handler().run(['localhost', '7777', '1', test])
         proc.kill()
 
         log_file = glob.glob('*.log')[0]
