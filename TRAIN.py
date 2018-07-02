@@ -7,6 +7,9 @@ import time
 from agent_handler import Handler
 import numpy as np
 
+GUI = False
+MODE = 'external_gui' if GUI else 'external'
+
 
 def calculate_score(log_file_path):
     with open(log_file_path) as file:
@@ -18,11 +21,11 @@ for log_file in glob.iglob('*.log'):
 
 scores = []
 
-tests = glob.glob(os.path.join('tests', '*.xml'))
-tests = sorted(tests, key=lambda s: s[-7:-5])
+tests = glob.glob(os.path.join('tests_some', '*.xml'))
+tests = sorted(tests, key=lambda s: s[-7:-4])
 
 for test in tests:
-    server_command = 'javaw -jar ./octopus-environment.jar external_gui %s 7777' % test
+    server_command = 'javaw -jar ./octopus-environment.jar %s %s 7777' % (MODE, test)
     with Popen(server_command) as proc:
         Handler().run(['localhost', '7777', '1', test])
         proc.kill()
