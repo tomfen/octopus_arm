@@ -18,11 +18,13 @@ for log_file in glob.iglob('*.log'):
     os.remove(log_file)
 
 scores = []
-
-tests = glob.glob(os.path.join('tests_some', '*.xml'))
+current_dir = str(Path().absolute())
+tests = glob.glob(os.path.join(current_dir,'tests', '*.xml'))#('tests_some', '*.xml'))
 tests = sorted(tests, key=lambda s: s[-7:-4])
 
-current_dir = str(Path().absolute())
+every_4th = tests[::4]
+tests = every_4th
+
 
 first_placeholder = ""
 
@@ -31,14 +33,14 @@ if platform.system() is not "Windows":
     first_placeholder = "exec"
 
 GUI = True
-gui_placeholder = "external"
+MODE = "external"
 
 if GUI:
-    gui_placeholder = "external_gui"
+    MODE = "external_gui"
 
 for test in tests:
     print(test, end=': ')
-    server_command = '{} java  -Djava.endorsed.dirs={}/environment/lib -jar {}/environment/octopus-environment.jar {} {} 7777'.format(first_placeholder, current_dir, current_dir, gui_placeholder, (os.path.join(current_dir, test)))
+    server_command = '{} java  -Djava.endorsed.dirs={}/environment/lib -jar {}/environment/octopus-environment.jar {} {} 7777'.format(first_placeholder, current_dir, current_dir, MODE, (os.path.join(current_dir, test)))
     with Popen(server_command, shell=True, stdout=PIPE) as proc:
 
         # for line in proc.stdout:

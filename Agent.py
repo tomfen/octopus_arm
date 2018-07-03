@@ -23,7 +23,7 @@ class Agent:
         self.__alpha = 0.001
         self.__gamma = 0.9
         self.__decision_every = 6
-        self.__explore_probability = 0.2
+        self.__explore_probability = 0.3
         self.__max_replay_samples = 20
 
         self.__features = Features()
