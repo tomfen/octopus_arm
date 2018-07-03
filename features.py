@@ -43,3 +43,15 @@ class Features:
     def min_dist(self, state):
         xg, yg = self.__goal
         return min(self.distance(state[42 + i*4], state[42 + i*4 + 1], xg, yg) for i in range(7, 10))
+
+    def tip_arm_above_or_below(self, state):
+        u_10_y = state[35]
+        l_10_y = state[79]
+        avg = float(u_10_y + l_10_y) / float(2)
+
+        _, goal_y = self.__goal
+        if avg >= goal_y:
+            return 1
+        else:
+            return -1
+
