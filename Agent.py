@@ -40,7 +40,7 @@ class Agent:
         self.__actions = 3**self.__segments
 
         try:
-            self.__net = load_model('net')
+            self.__net = load_model('net.data')
         except:
             print('Creating new model')
             self.__net = Sequential([
@@ -53,7 +53,7 @@ class Agent:
         self.__net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error', sample_weight_mode='temporal')
 
         try:
-            self.__replay = Replay.load('replay')
+            self.__replay = Replay.load('replay.data')
         except Exception as a:
             self.__replay = Replay(self.__actions)
 
@@ -90,8 +90,8 @@ class Agent:
         if not self.__exploit:
             self.__update_q(reward, reward)
             self.__replay.submit(self.__test, (self.__replay_X, self.__replay_Y), self.__step)
-            self.__net.save('net')
-            self.__replay.save('replay')
+            self.__net.save('net.data')
+            self.__replay.save('replay.data')
 
     def cleanup(self):
         pass

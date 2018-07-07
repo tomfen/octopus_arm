@@ -5,7 +5,7 @@ import random
 
 import time
 
-import Agent
+import Agent2
 
 LINE_SEPARATOR = b'\n'
 BUF_SIZE = 4096  # in bytes
@@ -61,7 +61,7 @@ class Handler:
         actionDim = int(data[1])
 
         # instantiate agent
-        agent = Agent.Agent(stateDim, actionDim, agentParams)
+        agent : Agent2 = Agent2.Agent(stateDim, actionDim, agentParams)#Agent.Agent(stateDim, actionDim, agentParams)
 
         self.sendStr('START_LOG')
         self.sendStr(agent.getName())
