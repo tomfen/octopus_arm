@@ -1,5 +1,6 @@
 import datetime
 import json
+import math
 import os
 import random
 import sqlite3
@@ -22,6 +23,8 @@ np.set_printoptions(precision=3, suppress=True)
 def default(o):
     if isinstance(o, np.int64): return int(o)
     raise TypeError
+
+
 
 class HistoryTuple(NamedTuple):
     previous_raw_state : np.array
@@ -167,11 +170,13 @@ def namedtuple_factory(cursor, row):
 class Agent:
     # name should contain only letters, digits, and underscores (not enforced by environment)
     __name = 'second'
-    __net_name = "second_net.data"
+    __net_name = "second_net_min_features_custom_reward.data"
 
     partFactory = namedtuple("Part", ["upper_x", "upper_y", "u_x_velocity", "u_y_velocity",
                                       "lower_x", "lower_y", "l_x_velocity", "l_y_velocity"])
 
+    def custom_reward(self, reward, state):
+      return reward + (1/math.sqrt(self.__features._tip_horizontal_dist_from_goal(state) ** 2 + self.__features._tip_vertical_dist_from_goal(state) **2))
 
     def describe_parts(self, state):
         parts = []
@@ -294,7 +299,7 @@ class Agent:
             action_idx=previous_tuple.action_idx,
             next_raw_state=state,
             next_feature_vector=self.__features.min_features(state),
-            reward=reward,
+            reward=self.custom_reward(reward, state),
             started_at=previous_tuple.started_at
         )
         #self.__history_sarsa.append(updated_history_tuple)
@@ -347,14 +352,10 @@ class Agent:
         past = [json.loads(p[0]) for p in past]
         #unpacked = [p[0] for p in past]
         tuples = [HistoryTuple.from_unpacked(p) for p in past]
-        return random.sample(tuples, how_many)
+        return random.sample(tuples, min(how_many, len(tuples)))
 
 
-
-
-
-
-    def train(self, how_far_into_past=5000, how_many=200):
+    def train(self, how_far_into_past=2000, how_many=500):
 
         tuples = self.get_past_moves(how_far_into_past, how_many)
 
@@ -376,7 +377,7 @@ class Agent:
             batch_inputs.append(previous_feature_vector)
             batch_targets.append(updated_qs_of_old_state)
 
-        self.__net.fit(np.vstack([np.array(el) for el in batch_inputs]), np.vstack([np.array(el) for el in batch_targets]), batch_size=how_many)
+        self.__net.fit(np.vstack([np.array(el) for el in batch_inputs]), np.vstack([np.array(el) for el in batch_targets]), batch_size=how_many, verbose=0)
 
 
 

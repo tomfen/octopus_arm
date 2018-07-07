@@ -13,7 +13,6 @@ class MinFeatures(NamedTuple):
         features.append(self._tip_horizontal_dist_from_goal(state))
         features.append(self.tip_arm_above_or_below(state))
         return features
-        return
 
     def _tip_vertical_position(self, state):
         u_10_y = state[39]
