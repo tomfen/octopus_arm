@@ -1,18 +1,19 @@
 from math import atan2, pi
 import math
 from typing import NamedTuple, Tuple
-
+import numpy as np
 
 class MinFeatures(NamedTuple):
     dim : int = 3
     goal : Tuple[int, int] = (9, -1)
 
-    def min_features(self, state):
+    def min_features(self, state) -> np.array:
         features = []
         features.append(self._tip_vertical_dist_from_goal(state))
         features.append(self._tip_horizontal_dist_from_goal(state))
         features.append(self.tip_arm_above_or_below(state))
-        return (len(features), features)
+        return features
+        return
 
     def _tip_vertical_position(self, state):
         u_10_y = state[39]
@@ -59,7 +60,7 @@ class MinFeatures(NamedTuple):
     def tip_arm_above_or_below(self, state):
         avg = self._tip_vertical_position(state)
 
-        _, goal_y = self.__goal
+        _, goal_y = self.goal
         if avg >= goal_y:
             return 1
         else:

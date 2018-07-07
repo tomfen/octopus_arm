@@ -1,7 +1,12 @@
+import datetime
+import json
+import os
+import random
+import sqlite3
 from collections import namedtuple
 from itertools import product
 
-from typing import NamedTuple, List
+from typing import NamedTuple, List, Tuple
 
 import numpy as np
 from keras import Sequential
@@ -13,6 +18,62 @@ from Replay import Replay
 from features import Features, MinFeatures
 
 np.set_printoptions(precision=3, suppress=True)
+
+def default(o):
+    if isinstance(o, np.int64): return int(o)
+    raise TypeError
+
+class HistoryTuple(NamedTuple):
+    previous_raw_state : np.array
+    previous_feature_vector : np.array
+    action : np.array
+    action_idx : int
+    next_raw_state : np.array
+    next_feature_vector : np.array
+    reward : float
+    started_at : int = datetime.datetime.utcnow().timestamp()
+
+    def to_json(self):
+        to_be_serialized = HistoryTuple(previous_raw_state=self.previous_raw_state,
+                                        previous_feature_vector=self.previous_feature_vector,
+                                        action=self.action.tolist(),
+                                        action_idx=self.action_idx,
+                                        next_raw_state=self.next_raw_state,
+                                        next_feature_vector=self.next_feature_vector,
+                                        reward=self.reward,
+                                        started_at=self.started_at
+                                        )
+
+        return json.dumps(to_be_serialized, default=default)
+
+    @staticmethod
+    def from_unpacked(unpacked_list):
+        json_element = unpacked_list
+        previous_raw_state = json_element[0]
+        previous_feature_vector = json_element[1]
+        action = json_element[2]
+        action_idx = json_element[3]
+        next_raw_state = json_element[4]
+        next_feature_vector = json_element[5]
+        reward = json_element[6]
+        started_at = json_element[7]
+        correct =  HistoryTuple(previous_raw_state=previous_raw_state,
+                                        previous_feature_vector=previous_feature_vector,
+                                        action=action,
+                                        action_idx=action_idx,
+                                        next_raw_state=next_raw_state,
+                                        next_feature_vector=next_feature_vector,
+                                        reward=reward,
+                                        started_at=started_at
+                                        )
+        return correct
+
+    @staticmethod
+    def from_json(json_string):
+        json_element = json.loads(json_string)
+        return HistoryTuple.from_unpacked(json_element)
+
+
 
 class MuscleGroup(NamedTuple):
     dorsal : float = 0.0
@@ -59,7 +120,7 @@ class ThreeActionsMapper(NamedTuple):
     #             segment = []
     #     return  segments
 
-    def __to_action_vector(self, segments : List[MuscleGroup]):
+    def __to_action_vector(self, segments : List[MuscleGroup]) -> np.array:
 
         action_vector =  np.zeros(self.action_vector_size)
 
@@ -74,11 +135,7 @@ class ThreeActionsMapper(NamedTuple):
 
     def create_action_vector(self, action_idx : int):
 
-        action_dict = None
-        if self.actions_dict is None:
-            action_dict = self.get_actions_dict()
-        else:
-            action_dict = self.actions_dict
+        action_dict = self.actions_dict
 
         action_sequence = action_dict[action_idx]
         segment_length = int(10 / len(action_sequence))
@@ -94,7 +151,14 @@ class ThreeActionsMapper(NamedTuple):
         return self.__to_action_vector(muscle_groups)
 
 
-
+def namedtuple_factory(cursor, row):
+    """
+    Usage:
+    con.row_factory = namedtuple_factory
+    """
+    fields = [col[0] for col in cursor.description]
+    Row = namedtuple("Row", fields)
+    return Row(*row)
 
 
 
@@ -159,6 +223,9 @@ class Agent:
         self.__action_space_size = 3 ** self.__segments
 
         self.__action_mapper = ThreeActionsMapper()
+
+        self.__last_history_tuple = None
+        #self.__history_sarsa = []
         try:
             self.__net = load_model(self.__net_name)
         except:
@@ -169,7 +236,7 @@ class Agent:
                 Dense(self.__action_space_size, activation='linear'),
             ])
 
-        self.__net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error', sample_weight_mode='temporal')
+        self.__net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error')
 
         try:
             self.__replay = Replay.load('replay.data')
@@ -180,20 +247,80 @@ class Agent:
         self.__replay_Y = []
 
     def start(self, state):
-        self.__choose_action(state)
+
+        conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "history"))
+        conn.row_factory = namedtuple_factory
+        conn.execute('''
+            create table if not exists sarsa
+        (
+        	entry_id INTEGER
+        		primary key
+        		 autoincrement,
+        	data_json text not null,
+        	started_at float default 0 not null
+        );''')
+
+        conn.execute('''
+                    create index if not exists sarsa_started_at_index
+        	on sarsa (started_at)
+        ; ''')
+        conn.commit()
+        self.__conn = conn
+
+        # self.train() debug
+
+        action, action_idx = self.__choose_action(state)
+
+        self.__last_history_tuple = HistoryTuple(previous_raw_state=state,
+                                                 previous_feature_vector=self.__features.min_features(state),
+                                                 action=action,
+                                                 action_idx=action_idx,
+                                                 next_raw_state=None,
+                                                 next_feature_vector=None,
+                                                 reward=None,
+                                                 )
 
         return self.__action
 
     def step(self, reward, state):
 
-        described = self.describe_parts(state)
+        described = self.describe_parts(state) # for debug
 
-        self.__choose_action(state)
+        previous_tuple : HistoryTuple = self.__last_history_tuple
+        updated_history_tuple = HistoryTuple(
+            previous_raw_state=previous_tuple.previous_raw_state,
+            previous_feature_vector=previous_tuple.previous_feature_vector,
+            action=previous_tuple.action,
+            action_idx=previous_tuple.action_idx,
+            next_raw_state=state,
+            next_feature_vector=self.__features.min_features(state),
+            reward=reward,
+            started_at=previous_tuple.started_at
+        )
+        #self.__history_sarsa.append(updated_history_tuple)
+        data = updated_history_tuple.to_json()
+        self.__conn.execute('''insert into sarsa(data_json, started_at) values (json('{}'), {})'''.format (data, updated_history_tuple.started_at))
+        self.__conn.commit()
+
+        action, action_idx = self.__choose_action(state)
+        self.__last_history_tuple = HistoryTuple(previous_raw_state=state,
+                                                 previous_feature_vector=self.__features.min_features(state),
+                                                 action=action,
+                                                 action_idx=action_idx,
+                                                 next_raw_state=None,
+                                                 next_feature_vector=None,
+                                                 reward=None,
+                                                 started_at=previous_tuple.started_at)
         return self.__action
 
     def end(self, reward):
+
+        for i in range(0, 5):
+            self.train()
+
+
         if not self.__exploit:
-            self.__update_q(reward, reward)
+            #self.__update_q(reward, reward)
             self.__replay.submit(self.__test, (self.__replay_X, self.__replay_Y), self.__step)
             self.__net.save(self.__net_name)
             self.__replay.save('replay')
@@ -204,12 +331,63 @@ class Agent:
     def getName(self):
         return self.__name
 
-    def __choose_action(self, state):
+    def get_past_moves(self, how_far_into_past=5000, how_many=200) -> List[HistoryTuple]:
+        conn = self.__conn
+
+        past = list(conn.execute('''
+            select
+            -- entry_id,
+            data_json
+            --started_at
+            from sarsa
+            order by entry_id desc
+            limit {}
+        '''.format(how_far_into_past)))
+
+        past = [json.loads(p[0]) for p in past]
+        #unpacked = [p[0] for p in past]
+        tuples = [HistoryTuple.from_unpacked(p) for p in past]
+        return random.sample(tuples, how_many)
+
+
+
+
+
+
+    def train(self, how_far_into_past=5000, how_many=200):
+
+        tuples = self.get_past_moves(how_far_into_past, how_many)
+
+        batch_inputs = []
+        batch_targets = []
+        for previous_raw_state, previous_feature_vector, action, action_idx, next_raw_state, next_feature_vector, reward, started_at in tuples:
+
+
+            predicted_qs_of_old_state = self.__net.predict(np.array(previous_feature_vector).reshape(1, self.__features.dim))
+            predicted_qs_of_new_state = self.__net.predict(np.array(next_feature_vector).reshape(1, self.__features.dim))
+
+            best_future_action_idx = np.argmax(predicted_qs_of_new_state)
+
+            target = reward + self.__gamma * predicted_qs_of_new_state[0][best_future_action_idx]
+
+            updated_qs_of_old_state = predicted_qs_of_old_state
+            updated_qs_of_old_state[0][action_idx] = target
+
+            batch_inputs.append(previous_feature_vector)
+            batch_targets.append(updated_qs_of_old_state)
+
+        self.__net.fit(np.vstack([np.array(el) for el in batch_inputs]), np.vstack([np.array(el) for el in batch_targets]), batch_size=how_many)
+
+
+
+
+
+    def __choose_action(self, state) -> Tuple[np.array, int]:
 
         if self.__exploit or self.__explore_probability < np.random.random():
             # take best action
             feature_vector = self.__features.min_features(state)
-            q_values_of_actions = self.__net.predict(feature_vector)
+            q_values_of_actions = self.__net.predict( np.array(feature_vector).reshape(1, self.__features.dim))
             action_idx = np.argmax(q_values_of_actions)
         else:
             # take random action
@@ -217,46 +395,27 @@ class Agent:
 
         action_selected = self.__action_mapper.create_action_vector(action_idx)
         self.__action = action_selected
-    def __update_q(self, reward, max_q):
-        teach_out = self.__previous_out
-        teach_out[self.__previous_action] = reward + self.__gamma * max_q
+        return (action_selected, action_idx)
 
-        # sampling from infinite stream
-        if len(self.__replay_X) < self.__max_replay_samples:
-            self.__replay_X.append(self.__previous_meta_state)
-            self.__replay_Y.append((teach_out[self.__previous_action], self.__previous_action))
-
-        elif np.random.random() < self.__max_replay_samples/self.__step:
-            to_replace = np.random.randint(0, self.__max_replay_samples)
-            self.__replay_X[to_replace] = self.__previous_meta_state
-            self.__replay_Y[to_replace] = (teach_out[self.__previous_action], self.__previous_action)
-
-        self.__net.fit([self.__previous_meta_state], [teach_out.reshape(1, self.__action_space_size, 1)], verbose=0)
-
-        replay_x, replay_y, replay_w = self.__replay.get_training()
-        if replay_x:
-            data = list(zip(replay_x, replay_y, replay_w))
-            np.random.shuffle(data)
-            for x, y, w in data:
-                self.__net.fit([x], [y], sample_weight=[w], verbose=0)
-
-    def __meta_to_action(self, meta):
-
-        self.__action[:] = 0
-
-        for segment in range(self.__segments):
-            segment_action = meta % 3
-
-            muscle_start = 30 * segment // self.__segments
-            muscle_stop = 30 * (segment+1) // self.__segments
-
-            if segment_action == 0:
-                self.__action[muscle_start:muscle_stop:3] = 1
-
-            if segment_action == 1:
-                self.__action[muscle_start+1:muscle_stop:3] = 1
-
-            if segment_action == 2:
-                self.__action[muscle_start+2:muscle_stop:3] = 1
-
-            meta //= 3
+    # def __update_q(self, reward, max_q):
+    #     teach_out = self.__previous_out
+    #     teach_out[self.__previous_action] = reward + self.__gamma * max_q
+    #
+    #     # sampling from infinite stream
+    #     if len(self.__replay_X) < self.__max_replay_samples:
+    #         self.__replay_X.append(self.__previous_meta_state)
+    #         self.__replay_Y.append((teach_out[self.__previous_action], self.__previous_action))
+    #
+    #     elif np.random.random() < self.__max_replay_samples/self.__step:
+    #         to_replace = np.random.randint(0, self.__max_replay_samples)
+    #         self.__replay_X[to_replace] = self.__previous_meta_state
+    #         self.__replay_Y[to_replace] = (teach_out[self.__previous_action], self.__previous_action)
+    #
+    #     self.__net.fit([self.__previous_meta_state], [teach_out.reshape(1, self.__action_space_size, 1)], verbose=0)
+    #
+    #     replay_x, replay_y, replay_w = self.__replay.get_training()
+    #     if replay_x:
+    #         data = list(zip(replay_x, replay_y, replay_w))
+    #         np.random.shuffle(data)
+    #         for x, y, w in data:
+    #             self.__net.fit([x], [y], sample_weight=[w], verbose=0)
