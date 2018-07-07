@@ -20,6 +20,15 @@ class MuscleGroup(NamedTuple):
     venrtal : float = 0.0
 
 
+def get_actions_dict(possible_actions_count, segments_count):
+    all_configurations = list(product(list(range(0, possible_actions_count)), repeat=segments_count))
+
+    actions_dict = {}
+    for idx, conf in enumerate(all_configurations):
+        actions_dict[idx] = conf
+
+    return actions_dict
+
 class ThreeActionsMapper(NamedTuple):
     #action 0 -> bend downwards
     #action 1 -> bend upwards
@@ -28,17 +37,10 @@ class ThreeActionsMapper(NamedTuple):
     action_vector_size = 30
     action_vector : np.array = np.zeros(action_vector_size)
     possible_actions_count : int = 3
-    actions_dict = None
+    actions_dict = get_actions_dict(possible_actions_count, segments_count)
 
-    def get_actions_dict(self):
-        all_configurations = list(product(list(range(0,self.possible_actions_count)), repeat=self.segments_count))
 
-        actions_dict = {}
-        for idx, conf in enumerate(all_configurations):
-            actions_dict[idx] = conf
 
-        self.actions_dict = actions_dict
-        return actions_dict
 
     # def get_segments(self, action_vector):
     #     muscle_groups = []
@@ -62,14 +64,16 @@ class ThreeActionsMapper(NamedTuple):
         action_vector =  np.zeros(self.action_vector_size)
 
         for idx, m_g in enumerate(segments):
-            action_vector[idx] = m_g.dorsal
-            action_vector[idx+1] = m_g.transverse
-            action_vector[idx+2] = m_g.venrtal
+            offset = 3*idx
+            action_vector[offset] = m_g.dorsal
+            action_vector[offset+1] = m_g.transverse
+            action_vector[offset+2] = m_g.venrtal
 
         return action_vector
 
 
-    def create_action(self, action_idx : int):
+    def create_action_vector(self, action_idx : int):
+
         action_dict = None
         if self.actions_dict is None:
             action_dict = self.get_actions_dict()
@@ -77,15 +81,16 @@ class ThreeActionsMapper(NamedTuple):
             action_dict = self.actions_dict
 
         action_sequence = action_dict[action_idx]
-
+        segment_length = int(10 / len(action_sequence))
         muscle_groups = []
         for  muscle_group_val in action_sequence:
-            if muscle_group_val == 0:
-                muscle_groups.append(MuscleGroup(-1,0,1))
-            elif muscle_group_val == 1:
-                muscle_groups.append(MuscleGroup(1, 0, -1))
-            elif muscle_group_val == 2:
-                muscle_groups.append(MuscleGroup(0,1,0))
+            for i in range(0, segment_length):
+                if muscle_group_val == 0:
+                    muscle_groups.append(MuscleGroup(-1,0,1))
+                elif muscle_group_val == 1:
+                    muscle_groups.append(MuscleGroup(1, 0, -1))
+                elif muscle_group_val == 2:
+                    muscle_groups.append(MuscleGroup(0,1,0))
         return self.__to_action_vector(muscle_groups)
 
 
@@ -205,13 +210,13 @@ class Agent:
             # take best action
             feature_vector = self.__features.min_features(state)
             q_values_of_actions = self.__net.predict(feature_vector)
-            action = np.argmax(q_values_of_actions)
+            action_idx = np.argmax(q_values_of_actions)
         else:
             # take random action
-            action = np.random.randint(0, self.__action_space_size)
+            action_idx = np.random.randint(0, self.__action_space_size)
 
-        self.__action = self.__action_mapper.create_action(action)
-
+        action_selected = self.__action_mapper.create_action_vector(action_idx)
+        self.__action = action_selected
     def __update_q(self, reward, max_q):
         teach_out = self.__previous_out
         teach_out[self.__previous_action] = reward + self.__gamma * max_q
