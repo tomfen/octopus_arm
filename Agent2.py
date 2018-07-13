@@ -16,6 +16,7 @@ from keras.models import load_model
 from keras.optimizers import SGD
 
 from Replay import Replay
+from config import get_counter
 from features import Features, MinFeatures
 
 np.set_printoptions(precision=3, suppress=True)
@@ -170,7 +171,10 @@ def namedtuple_factory(cursor, row):
 class Agent:
     # name should contain only letters, digits, and underscores (not enforced by environment)
     __name = 'second'
-    __net_name = "second_net_min_features_custom_reward.data"
+    _generation = 0
+    _counter = get_counter()
+    __upper_net_name = "lower_net_generation_{}.data".format(_generation)
+    __lower_net_name = "upper_net_generation_{}.data".format(_generation)
 
     partFactory = namedtuple("Part", ["upper_x", "upper_y", "u_x_velocity", "u_y_velocity",
                                       "lower_x", "lower_y", "l_x_velocity", "l_y_velocity"])
@@ -201,6 +205,27 @@ class Agent:
 
         return parts
 
+    # def load_latest_upper_net(self):
+    #     local_path = __file__
+    #     files = os.listdir(local_path)
+    #     nets = [f for f in files if "upper_net" in f]
+    #     if len(nets):
+    #
+    #
+    # def try_to_load_upper(self, counter):
+    #     try:
+    #         self.__upper_net = load_model("upper_net_{}_.data".format((self._counter)))
+    #         return True
+    #     except:
+    #        return False
+    #
+    # def try_to_load_lower(self, counter):
+    #     lower_name = "lower_net_{}_.data".format((self._counter - 1))
+    #     try:
+    #         self.__lower_net = load_model(lower_name)
+    #         return True
+    #     except:
+    #        return False
 
     def __init__(self, stateDim, actionDim, agentParams):
         self.__stateDim = stateDim
@@ -230,49 +255,110 @@ class Agent:
         self.__action_mapper = ThreeActionsMapper()
 
         self.__last_history_tuple = None
-        #self.__history_sarsa = []
+        self.__current_map_category = None
+
+        self._net_dict = {}
+        self._lower_net = None
+        self._upper_net = None
+
         try:
-            self.__net = load_model(self.__net_name)
+            self._lower_net = load_model(self.__lower_net_name)
         except:
-            print('Creating new model')
-            self.__net = Sequential([
+            print('{} not found, creating new lower model'.format(self.__lower_net_name))
+            self._lower_net = Sequential([
                 Dense(50, activation='elu', input_dim=self.__features.dim),
                 Dense(30, activation='elu'),
                 Dense(self.__action_space_size, activation='linear'),
             ])
 
-        self.__net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error')
+        self._lower_net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error')
 
         try:
-            self.__replay = Replay.load('replay.data')
-        except Exception as a:
-            self.__replay = Replay(self.__action_space_size)
+            self._upper_net = load_model(self.__upper_net_name)
+        except:
+            print('{} not found, creating new upper model'.format(self.__upper_net_name))
+            self._upper_net = Sequential([
+                Dense(50, activation='elu', input_dim=self.__features.dim),
+                Dense(30, activation='elu'),
+                Dense(self.__action_space_size, activation='linear'),
+            ])
 
-        self.__replay_X = []
-        self.__replay_Y = []
+        self._upper_net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error')
+
+        # if self.try_to_load_upper(self._counter -1):
+        #     print("found upper_net_{}".format(self._counter - 1))
+        #     pass
+        # else:
+        #     if self.try_to_load_upper(self._counter):
+        #         print("found_upper_net_{}".format(self._counter))
+        #         pass
+        #     else:
+        #         print("did not found upper_net_{}".format(self._counter))
+        #         upper_name = "upper_net_{}_.data".format((self._counter))
+        #         print('Creating new model, {} not found'.format(upper_name))
+        #         self.__upper_net = Sequential([
+        #             Dense(50, activation='elu', input_dim=self.__features.dim),
+        #             Dense(30, activation='elu'),
+        #             Dense(self.__action_space_size, activation='linear'),
+        #         ])
+        #
+        #     self.__upper_net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error')
+        #
+        # if self.try_to_load_lower(self._counter - 1):
+        #
+        #     pass
+        # else:
+        #     print("did not found lower_net_{}".format(self._counter - 1))
+        #     if self.try_to_load_lower(self._counter):
+        #         pass
+        #     else:
+        #         print("did not found lower_net_{}".format(self._counter))
+        #         lower_name = "lower_net_{}_.data".format((self._counter))
+        #         print('Creating new model, {} not found'.format(lower_name))
+        #         self.__upper_net = Sequential([
+        #             Dense(50, activation='elu', input_dim=self.__features.dim),
+        #             Dense(30, activation='elu'),
+        #             Dense(self.__action_space_size, activation='linear'),
+        #         ])
+        #
+        #     self.__lower_net.compile(optimizer=SGD(lr=self.__alpha), loss='mean_squared_error')
 
     def start(self, state):
-
+        self._net_dict[-1] = self._lower_net
+        self._net_dict[1] = self._upper_net
         conn = sqlite3.connect(os.path.join(os.path.dirname(os.path.abspath(__file__)), "history"))
         conn.row_factory = namedtuple_factory
         conn.execute('''
             create table if not exists sarsa
-        (
-        	entry_id INTEGER
-        		primary key
-        		 autoincrement,
-        	data_json text not null,
-        	started_at float default 0 not null
-        );''')
+(
+	entry_id INTEGER
+		primary key
+		 autoincrement,
+	data_json text not null,
+	started_at float default 0 not null,
+	upper_or_lower int default 0 not null
+);''')
 
-        conn.execute('''
-                    create index if not exists sarsa_started_at_index
-        	on sarsa (started_at)
-        ; ''')
+
+        conn.execute('''create index if not exists sarsa_started_at_index
+            on sarsa (started_at)''')
+
+
+        conn.execute('''create index if not exists sarsa_upper_or_lower_index
+            on sarsa (upper_or_lower)
+        ;''')
+
+
         conn.commit()
         self.__conn = conn
 
         # self.train() debug
+
+        self.__current_map_category = self.__features.tip_arm_above_or_below(state)
+        if self.__current_map_category == 1:
+            print("should be using upper")
+        if self.__current_map_category == -1:
+            print("should be using lower")
 
         action, action_idx = self.__choose_action(state)
 
@@ -289,7 +375,7 @@ class Agent:
 
     def step(self, reward, state):
 
-        described = self.describe_parts(state) # for debug
+        #described = self.describe_parts(state) # for debug
 
         previous_tuple : HistoryTuple = self.__last_history_tuple
         updated_history_tuple = HistoryTuple(
@@ -302,9 +388,9 @@ class Agent:
             reward=self.custom_reward(reward, state),
             started_at=previous_tuple.started_at
         )
-        #self.__history_sarsa.append(updated_history_tuple)
         data = updated_history_tuple.to_json()
-        self.__conn.execute('''insert into sarsa(data_json, started_at) values (json('{}'), {})'''.format (data, updated_history_tuple.started_at))
+
+        self.__conn.execute('''insert into sarsa (data_json, started_at, upper_or_lower) values (json('{}'), {}, {})'''.format (data, updated_history_tuple.started_at, self.__current_map_category))
         self.__conn.commit()
 
         action, action_idx = self.__choose_action(state)
@@ -321,14 +407,15 @@ class Agent:
     def end(self, reward):
 
         for i in range(0, 5):
-            self.train()
+            self.train(self.__current_map_category)
 
 
         if not self.__exploit:
-            #self.__update_q(reward, reward)
-            self.__replay.submit(self.__test, (self.__replay_X, self.__replay_Y), self.__step)
-            self.__net.save(self.__net_name)
-            self.__replay.save('replay')
+            self._lower_net.save(self.__lower_net_name)
+            self._upper_net.save(self.__upper_net_name)
+
+            # self._lower_net.save("_after_level_{}".format(self.__test))
+            # self._upper_net.save("_after_level_{}".format(self.__test))
 
     def cleanup(self):
         pass
@@ -336,7 +423,7 @@ class Agent:
     def getName(self):
         return self.__name
 
-    def get_past_moves(self, how_far_into_past=5000, how_many=200) -> List[HistoryTuple]:
+    def get_past_moves(self, category, how_far_into_past=5000, how_many=200) -> List[HistoryTuple]:
         conn = self.__conn
 
         past = list(conn.execute('''
@@ -345,9 +432,11 @@ class Agent:
             data_json
             --started_at
             from sarsa
+            where upper_or_lower = {}
             order by entry_id desc
             limit {}
-        '''.format(how_far_into_past)))
+
+        '''.format(category, how_far_into_past)))
 
         past = [json.loads(p[0]) for p in past]
         #unpacked = [p[0] for p in past]
@@ -355,17 +444,17 @@ class Agent:
         return random.sample(tuples, min(how_many, len(tuples)))
 
 
-    def train(self, how_far_into_past=2000, how_many=500):
+    def train(self, category, how_far_into_past=2000, how_many=500):
 
-        tuples = self.get_past_moves(how_far_into_past, how_many)
+        tuples = self.get_past_moves(category, how_far_into_past, how_many)
 
         batch_inputs = []
         batch_targets = []
         for previous_raw_state, previous_feature_vector, action, action_idx, next_raw_state, next_feature_vector, reward, started_at in tuples:
 
 
-            predicted_qs_of_old_state = self.__net.predict(np.array(previous_feature_vector).reshape(1, self.__features.dim))
-            predicted_qs_of_new_state = self.__net.predict(np.array(next_feature_vector).reshape(1, self.__features.dim))
+            predicted_qs_of_old_state = self._net_dict[self.__current_map_category].predict(np.array(previous_feature_vector).reshape(1, self.__features.dim))
+            predicted_qs_of_new_state = self._net_dict[self.__current_map_category].predict(np.array(next_feature_vector).reshape(1, self.__features.dim))
 
             best_future_action_idx = np.argmax(predicted_qs_of_new_state)
 
@@ -377,7 +466,7 @@ class Agent:
             batch_inputs.append(previous_feature_vector)
             batch_targets.append(updated_qs_of_old_state)
 
-        self.__net.fit(np.vstack([np.array(el) for el in batch_inputs]), np.vstack([np.array(el) for el in batch_targets]), batch_size=how_many, verbose=0)
+        self._net_dict[self.__current_map_category].fit(np.vstack([np.array(el) for el in batch_inputs]), np.vstack([np.array(el) for el in batch_targets]), batch_size=how_many, verbose=0)
 
 
 
@@ -388,7 +477,7 @@ class Agent:
         if self.__exploit or self.__explore_probability < np.random.random():
             # take best action
             feature_vector = self.__features.min_features(state)
-            q_values_of_actions = self.__net.predict( np.array(feature_vector).reshape(1, self.__features.dim))
+            q_values_of_actions = self._net_dict[self.__current_map_category].predict(np.array(feature_vector).reshape(1, self.__features.dim))
             action_idx = np.argmax(q_values_of_actions)
         else:
             # take random action
